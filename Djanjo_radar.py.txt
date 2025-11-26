@@ -1,0 +1,89 @@
+from flask import Flask, render_template_string, Response
+import cv2
+import RPi.GPIO as GPIO
+
+app = Flask(__name__)
+
+# Motor pins
+IN1, IN2, IN3, IN4 = 17, 27, 22, 5
+GPIO.setmode(GPIO.BCM)
+for pin in [IN1, IN2, IN3, IN4]:
+    GPIO.setup(pin, GPIO.OUT)
+
+def forward():
+    GPIO.output(IN1, True); GPIO.output(IN2, False)
+    GPIO.output(IN3, True); GPIO.output(IN4, False)
+
+def backward():
+    GPIO.output(IN1, False); GPIO.output(IN2, True)
+    GPIO.output(IN3, False); GPIO.output(IN4, True)
+
+def left():
+    GPIO.output(IN1, False); GPIO.output(IN2, True)
+    GPIO.output(IN3, True); GPIO.output(IN4, False)
+
+def right():
+    GPIO.output(IN1, True); GPIO.output(IN2, False)
+    GPIO.output(IN3, False); GPIO.output(IN4, True)
+
+def stop():
+    for pin in [IN1, IN2, IN3, IN4]:
+        GPIO.output(pin, False)
+
+# Camera setup (USB cam or Pi cam)
+camera = cv2.VideoCapture(0)
+
+def gen_frames():
+    while True:
+        success, frame = camera.read()
+        if not success:
+            break
+        else:
+            ret, buffer = cv2.imencode('.jpg', frame)
+            frame = buffer.tobytes()
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+
+html = """
+<!doctype html>
+<title>Car Control</title>
+<h1>4WD Control with Camera</h1>
+<img src="/video_feed" width="640" height="480"><br>
+<form action="/forward"><button>Forward</button></form>
+<form action="/backward"><button>Backward</button></form>
+<form action="/left"><button>Left</button></form>
+<form action="/right"><button>Right</button></form>
+<form action="/stop"><button>Stop</button></form>
+"""
+
+@app.route("/")
+def index():
+    return render_template_string(html)
+
+@app.route("/video_feed")
+def video_feed():
+    return Response(gen_frames(),
+                    mimetype='multipart/x-mixed-replace; boundary=frame')
+
+@app.route("/forward")
+def go_forward():
+    forward(); return index()
+
+@app.route("/backward")
+def go_backward():
+    backward(); return index()
+
+@app.route("/left")
+def go_left():
+    left(); return index()
+
+@app.route("/right")
+def go_right():
+    right(); return index()
+
+@app.route("/stop")
+def go_stop():
+    stop(); return index()
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000)
