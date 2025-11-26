@@ -69,31 +69,44 @@ def stop():
 
 
 # --- 3. Video Streaming Generator with YOLO ---
+# --- Modified Video Generator with Frame Skipping ---
 def gen_frames():
+    frame_count = 0
+    # How many raw frames to show between detection frames
+    # Increase this number for smoother video, decrease for faster detection updates
+    SKIP_FRAMES = 4
+    last_annotated_frame = None
+
     while True:
         if camera is None or not camera.isOpened():
             break
-
         success, frame = camera.read()
         if not success:
             break
         else:
-            # --- START YOLO DETECTION ---
-            # Run inference on the frame captured by OpenCV
-            results = model(frame)
+            # Only run AI if frame_count is a multiple of SKIP_FRAMES + 1
+            if frame_count % (SKIP_FRAMES + 1) == 0:
+                # --- Run heavy AI inference ---
+                results = model(frame)
+                last_annotated_frame = results.render()[0]
+                final_display = last_annotated_frame
+            else:
+                # --- Skip AI, just show video ---
+                # Option A: Show raw video (smoothest)
+                final_display = frame
 
-            # 'render()' returns a list of images with bounding boxes drawn.
-            # We take the first (and only) image.
-            # Note: YOLOv5 render usually handles BGR/RGB conversion automatically
-            # so the output should look correct in OpenCV.
-            annotated_frame = results.render()[0]
-            # --- END YOLO DETECTION ---
+                # Option B: Show the last known detection results superimposed
+                # (Looks better but might show lagging boxes behind moving objects)
+                # if last_annotated_frame is not None:
+                #      final_display = last_annotated_frame
+                # else:
+                #      final_display = frame
 
-            # Encode the resulting frame with boxes into JPEG format
-            ret, buffer = cv2.imencode('.jpg', annotated_frame)
+            frame_count += 1
+
+            # Encode whatever we decided to display
+            ret, buffer = cv2.imencode('.jpg', final_display)
             frame_bytes = buffer.tobytes()
-
-            # Stream the data to the browser
             yield (b'--frame\r\n'
                    b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
 
@@ -185,4 +198,5 @@ if __name__ == "__main__":
         stop()
         GPIO.cleanup()
         if camera and camera.isOpened():
+
             camera.release()
