@@ -1,0 +1,65 @@
+import RPi.GPIO as GPIO
+import time
+import matplotlib.pyplot as plt
+import numpy as np
+
+# GPIO setup
+GPIO.setmode(GPIO.BCM)
+GPIO.setwarnings(False)
+
+TRIG = 23
+ECHO = 24
+GPIO.setup(TRIG, GPIO.OUT)
+GPIO.setup(ECHO, GPIO.IN)
+
+def distance():
+    GPIO.output(TRIG, True)
+    time.sleep(0.00001)
+    GPIO.output(TRIG, False)
+
+    start = time.time()
+    while GPIO.input(ECHO) == 0:
+        start = time.time()
+    while GPIO.input(ECHO) == 1:
+        stop = time.time()
+
+    elapsed = stop - start
+    dist = (elapsed * 34300) / 2
+    return dist
+
+# Radar visualization setup
+plt.ion()
+fig = plt.figure()
+ax = fig.add_subplot(111, polar=True)
+ax.set_theta_zero_location("N")   # 0° at top
+ax.set_theta_direction(-1)        # clockwise sweep
+ax.set_ylim(0, 100)               # max distance 100 cm
+
+try:
+    angle = 0
+    while True:
+        dist = distance()
+        print("Distance: %.1f cm" % dist)
+
+        # Clear previous plot
+        ax.clear()
+        ax.set_theta_zero_location("N")
+        ax.set_theta_direction(-1)
+        ax.set_ylim(0, 100)
+
+        # Plot obstacle point
+        theta = np.deg2rad(angle)
+        ax.plot([theta], [dist], 'ro')  # red dot for obstacle
+
+        # Sweep line
+        ax.plot([theta, theta], [0, 100], 'g-')
+
+        plt.draw()
+        plt.pause(0.05)
+
+        # Sweep angle (0–180 for servo, or 0–360 if rotating sensor)
+        angle = (angle + 10) % 180
+
+except KeyboardInterrupt:
+    print("Stopped by User")
+    GPIO.cleanup()
